@@ -55,3 +55,8 @@ for number in range(bound):
 git clone https://github.com/keon/algorithms
 python -m birp.reverse -f algorithms/algorithms/*/*.py
 ```
+
+## Интерактивный режим
+
+Если не передать файлы, то запустится интерактивный режим.    
+Работает он ужасно, потому что так и задумано (нет).
