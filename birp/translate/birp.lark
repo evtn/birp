@@ -1,0 +1,318 @@
+// Python 3 grammar for Lark
+
+// This grammar should parse all python 3.x code successfully.
+
+// Adapted from: https://docs.python.org/3/reference/grammar.html
+
+// Start symbols for the grammar:
+//       single_input is a single interactive statement;
+//       file_input is a module or sequence of commands read from an input file;
+//       eval_input is the input for the eval() functions.
+// NB: compound_stmt in single_input is followed by extra NEWLINE!
+//
+
+single_input: _NEWLINE | simple_stmt | compound_stmt _NEWLINE
+file_input: (_NEWLINE | stmt)*
+eval_input: testlist _NEWLINE*
+
+decorator: "@" dotted_name [ "(" [arguments] ")" ] _NEWLINE
+decorators: decorator+
+decorated: decorators (classdef | funcdef | async_funcdef)
+
+async_funcdef: "асинхронно" funcdef
+funcdef: "объявить" NAME "(" [parameters] ")" ["->" test] ":" suite
+
+parameters: paramvalue ("," paramvalue)* ["," SLASH] ["," [starparams | kwparams]]
+          | starparams
+          | kwparams
+
+SLASH: "/" // Otherwise the it will completely disappear and it will be undisguisable in the result
+starparams: "*" typedparam? ("," paramvalue)* ["," kwparams]
+kwparams: "**" typedparam ","?
+
+?paramvalue: typedparam ("=" test)?
+?typedparam: NAME (":" test)?
+
+
+lambdef: "лямбда" [lambda_params] ":" test
+lambdef_nocond: "лямбда" [lambda_params] ":" test_nocond
+lambda_params: lambda_paramvalue ("," lambda_paramvalue)* ["," [lambda_starparams | lambda_kwparams]]
+          | lambda_starparams
+          | lambda_kwparams
+?lambda_paramvalue: NAME ("=" test)?
+lambda_starparams: "*" [NAME]  ("," lambda_paramvalue)* ["," [lambda_kwparams]]
+lambda_kwparams: "**" NAME ","?
+
+
+?stmt: simple_stmt | compound_stmt
+?simple_stmt: small_stmt (";" small_stmt)* [";"] _NEWLINE
+?small_stmt: (expr_stmt | assign_stmt | del_stmt | pass_stmt | flow_stmt | import_stmt | global_stmt | nonlocal_stmt | assert_stmt)
+?expr_stmt: testlist_star_expr 
+?assign_stmt: annassign | augassign | assign | "(" assigment_expression ")" -> assigment_expression_top_level
+assigment_expression: NAME ":=" test
+
+annassign: testlist_star_expr ":" test ["=" test]
+assign: testlist_star_expr ("=" (yield_expr|testlist_star_expr))+
+augassign: testlist_star_expr augassign_op (yield_expr|testlist)
+!augassign_op: "+=" | "-=" | "*=" | "@=" | "/=" | "%=" | "&=" | "|=" | "^=" | "<<=" | ">>=" | "**=" | "//="
+?testlist_star_expr: test_or_star_expr 
+                   | test_or_star_expr ("," test_or_star_expr)+ ","?  -> tuple
+                   | test_or_star_expr ","  -> tuple
+
+// For normal and annotated assignments, additional restrictions enforced by the interpreter
+del_stmt: "удалить" exprlist
+pass_stmt: "пропустить"
+?flow_stmt: break_stmt | continue_stmt | return_stmt | raise_stmt | yield_stmt
+break_stmt: "остановить"
+continue_stmt: "продолжить"
+return_stmt: "вернуть" [testlist]
+?yield_stmt: yield_expr
+raise_stmt: "бросить" [test ["из" test]]
+?import_stmt: import_name | import_from
+import_name: "подключить" dotted_as_names
+// note below: the ("." | "...") is necessary because "..." is tokenized as ELLIPSIS
+IMPORT_STAR: "*"
+import_from: "из" (dots? dotted_name | dots) "подключить" (IMPORT_STAR | "(" import_as_names ")" | import_as_names)
+!dots: "."+
+import_as_name: NAME ["как" NAME]
+dotted_as_name: dotted_name ["как" NAME]
+import_as_names: import_as_name ("," import_as_name)* [","]
+dotted_as_names: dotted_as_name ("," dotted_as_name)*
+dotted_name: NAME ("." NAME)*
+global_stmt: "глобально" NAME ("," NAME)*
+nonlocal_stmt: "нелокально" NAME ("," NAME)*
+assert_stmt: "убедиться" test ["," test]
+
+?compound_stmt: if_stmt | while_stmt | for_stmt | try_stmt | with_stmt | funcdef | classdef | decorated | async_stmt //| match_stmt
+async_stmt: "асинхронно" (funcdef | with_stmt | for_stmt)
+if_stmt: "если" test ":" suite elifs ["иначе" ":" suite]
+elifs: elif_*
+elif_: "иначеесли" test ":" suite
+while_stmt: "пока" test ":" suite ["иначе" ":" suite]
+for_stmt: "для" exprlist "в" testlist ":" suite ["иначе" ":" suite]
+try_stmt: "попробовать" ":" suite except_clauses ["иначе" ":" suite] [finally_]
+        | "попробовать" ":" suite finally_   -> try_finally
+finally_: "финально" ":" suite
+except_clauses: except_clause+ 
+except_clause: "кроме" [test ["как" NAME]] ":" suite
+
+with_stmt: "с" with_items ":" suite
+with_items: with_item ("," with_item)* 
+with_item: test ["как" expr]
+// NB compile.c makes sure that the default except clause is last
+suite: simple_stmt -> one_line_suite
+     | _NEWLINE _INDENT stmt+ _DEDENT
+
+?test: or_test ("если" or_test "иначе" test)?
+     | lambdef
+?test_nocond: or_test | lambdef_nocond
+
+?or_test: and_test ("или" and_test)*
+?and_test: not_test_ ("и" not_test_)*
+?not_test_: "не" not_test_ -> not_test
+         | comparison
+?comparison: expr (comp_op expr)*
+star_expr: "*" expr
+
+?star_named_expr: star_expr | named_expression
+?star_named_exprs: star_named_expr ("," star_named_expr)* ","?
+?named_expression: assigment_expression | test
+
+?expr: or_expr
+?or_expr: xor_expr ("|" xor_expr)*
+?xor_expr: and_expr ("^" and_expr)*
+?and_expr: shift_expr ("&" shift_expr)*
+?shift_expr: arith_expr (_shift_op arith_expr)*
+?arith_expr: term (_add_op term)*
+?term: factor (_mul_op factor)*
+?factor: _unary_op factor | power
+
+!_unary_op: "+"|"-"|"~"
+!_add_op: "+"|"-"
+!_shift_op: "<<"|">>"
+!_mul_op: "*"|"@"|"/"|"%"|"//"
+// <> isn't actually a valid comparison operator in Python. It's here for the
+// sake of a __future__ import described in PEP 401 (which really works :-)
+!comp_op: "<"|">"|"=="|">="|"<="|"<>"|"!="|"в"|"не" "в"|"есть"|"есть" "не"
+
+?power: await_expr ("**" factor)?
+?await_expr: AWAIT? atom_expr
+AWAIT: "ожидать"
+
+// match_stmt: "соответствие" subject_expr ":" _NEWLINE _INDENT case_block+ _DEDENT 
+// subject_expr: star_named_expr "," star_named_exprs? | named_expression
+// case_block: "случай" patterns guard? ":" suite 
+// guard: "если" named_expression 
+
+// patterns: open_sequence_pattern | pattern
+
+// pattern: as_pattern
+
+// ?as_pattern: or_pattern ("as" pattern_capture_target)?
+
+// ?or_pattern: closed_pattern ("|" closed_pattern)*
+
+// closed_pattern: literal_expr
+//               | capture_pattern
+//               | wildcard_pattern
+//               | value_pattern
+//               | group_pattern
+//               | sequence_pattern
+//               | mapping_pattern
+//               | class_pattern
+
+
+// ?literal_expr: number
+//              | string_concat 
+//              | "Ничего" -> const_none
+//              | "Да"     -> const_true
+//              | "Нет"    -> const_false
+
+
+
+// capture_pattern: pattern_capture_target
+
+// ?pattern_capture_target: NAME 
+
+// wildcard_pattern: "_" 
+
+// value_pattern: attr 
+// attr: NAME ("." NAME)+
+
+// group_pattern: "(" pattern ")" 
+
+// sequence_pattern: "[" [maybe_sequence_pattern] "]" 
+//                 | "(" [open_sequence_pattern] ")" 
+
+// open_sequence_pattern: maybe_star_pattern "," maybe_sequence_pattern? 
+// maybe_sequence_pattern: maybe_star_pattern ("," maybe_star_pattern)* ","?
+// maybe_star_pattern: star_pattern | pattern
+// star_pattern: "*" pattern_capture_target 
+//             | "*" wildcard_pattern 
+
+// mapping_pattern: "{" "}" 
+//                | "{" double_star_pattern ","? "}" 
+//                | "{" items_pattern "," double_star_pattern ","? "}" 
+//                | "{" items_pattern ","? "}" 
+// ?items_pattern: key_value_pattern ("," key_value_pattern)*
+// key_value_pattern: (literal_expr | attr) ":" pattern 
+// double_star_pattern: "**" pattern_capture_target 
+
+// class_pattern: attr "(" ")" 
+//              | attr "(" positional_patterns ","? ")" 
+//              | attr "(" keyword_patterns ","? ")" 
+//              | attr "(" positional_patterns "," keyword_patterns ","? ")" 
+// positional_patterns: pattern ("," pattern)* 
+// keyword_patterns: keyword_pattern ("," keyword_pattern)*
+// keyword_pattern: NAME "=" pattern 
+
+
+?atom_expr: atom_expr "(" [arguments] ")"      -> funccall
+          | atom_expr "[" subscriptlist "]"  -> getitem
+          | atom_expr "." NAME               -> getattr
+          | atom
+
+?atom: "(" yield_expr ")" -> parens
+     | "(" _tuple_inner? ")" -> tuple
+     | "(" comprehension{test_or_star_expr} ")" -> tuple_comprehension
+     | "[" _testlist_comp? "]"  -> list
+     | "[" comprehension{test_or_star_expr} "]"  -> list_comprehension
+     | "{" _dict_exprlist? "}" -> dict
+     | "{" comprehension{key_value} "}" -> dict_comprehension
+     | "{" _set_exprlist "}" -> set
+     | "{" comprehension{test} "}" -> set_comprehension
+     | NAME -> var
+     | number 
+     | string_concat
+     | "(" test ")" -> parens
+     | "..." -> ellipsis
+     | "Ничего" -> const_none
+     | "Да"     -> const_true
+     | "Нет"    -> const_false
+
+
+?string_concat: string+
+
+_testlist_comp: test | _tuple_inner
+_tuple_inner: test_or_star_expr (("," test_or_star_expr)+ [","] | ",")
+            
+
+?test_or_star_expr: star_named_expr
+
+?subscriptlist: subscript
+              | subscript (("," subscript)+ [","] | ",") -> subscript_tuple
+?subscript: test | ([test] ":" [test] [sliceop]) -> slice
+sliceop: ":" [test]
+?exprlist: (expr|star_expr)
+         | (expr|star_expr) (("," (expr|star_expr))+ [","]|",")
+?testlist: test | testlist_tuple
+testlist_tuple: test (("," test)+ [","] | ",")
+du_dct: "**" expr
+_dict_exprlist: (key_value | du_dct) ("," (key_value | du_dct))* [","]
+
+key_value: test ":" test
+
+_set_exprlist: test_or_star_expr (","  test_or_star_expr)* [","]
+
+classdef: "класс" NAME ["(" [arguments] ")"] ":" suite
+
+arguments: argvalue ("," argvalue)*  ("," [ starargs | kwargs])?
+         | starargs
+         | kwargs
+         | comprehension{test}
+
+starargs: stararg ("," stararg)* ("," argvalue)* ["," kwargs]
+stararg: "*" test
+kwargs: "**" test [","]
+
+?argvalue: test ("=" test)?
+
+comprehension{comp_result}: comp_result comp_fors [comp_if]
+comp_fors: comp_for+ 
+comp_for: [ASYNC] "для" exprlist "в" or_test
+ASYNC: "асинхронно"
+?comp_if: "если" test_nocond
+
+// not used in grammar, but may appear in "node" passed from Parser to Compiler
+encoding_decl: NAME
+
+yield_expr: "выдать" [testlist]
+          | "выдать" "из" test -> yield_from
+
+number: DEC_NUMBER -> integer
+      | HEX_NUMBER -> integer
+      | BIN_NUMBER -> integer
+      | OCT_NUMBER -> integer
+      | FLOAT_NUMBER -> float
+      | IMAG_NUMBER -> complex
+string: STRING | LONG_STRING
+
+// Other terminals
+
+_NEWLINE: ( /\r?\n[\t ]*/ | COMMENT )+
+
+%ignore /[\t \f]+/  // WS
+%ignore /\\[\t \f]*\r?\n/   // LINE_CONT
+%ignore COMMENT
+%declare _INDENT _DEDENT
+
+
+// Python terminals
+
+NAME: /[a-zA-Zа-яА-ЯЁё_]\w*/
+COMMENT: /#[^\n]*/
+
+STRING : /[ubfюбф]?r?("(?!"").*?(?<!\\)(\\\\)*?"|'(?!'').*?(?<!\\)(\\\\)*?')/i
+LONG_STRING: /[ubfюбф]?r?(""".*?(?<!\\)(\\\\)*?"""|'''.*?(?<!\\)(\\\\)*?''')/is
+
+DEC_NUMBER: /0|[1-9][\d_]*/i
+HEX_NUMBER.2: /0x[\da-f]*/i
+OCT_NUMBER.2: /0o[0-7]*/i
+BIN_NUMBER.2 : /0b[0-1]*/i
+FLOAT_NUMBER.2: /((\d+\.[\d_]*|\.[\d_]+)([Ee][-+]?\d+)?|\d+([Ee][-+]?\d+))/
+IMAG_NUMBER.2: /\d+[Jj]/ | FLOAT_NUMBER /[Jj]/
+
+
+// Comma-separated list (with an optional trailing comma)
+cs_list{item}: item ("," item)* ","?
+_cs_list{item}: item ("," item)* ","?
