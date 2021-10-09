@@ -1,2 +1,2 @@
-from .translate import main
+from birp.translate import main
 main()
