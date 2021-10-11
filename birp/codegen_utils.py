@@ -527,7 +527,7 @@ class БазовыйГенератор(Преобразователь):
         return f"{self.keys['del']} {tokens[0]}"
 
     def await_expr(self, tokens):
-        return f"{self.keys['await']} {tokens[0]}"
+        return f"{self.keys['await']} {tokens[1]}"
 
     def try_stmt(self, tokens):
         else_ = (f"{self.keys['else']}:" + tokens[2]) if tokens[2] else ""
