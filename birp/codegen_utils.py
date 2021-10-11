@@ -572,6 +572,10 @@ class БазовыйГенератор(Преобразователь):
     def pass_stmt(self, tokens):
         return self.keys["pass"]
 
+    def async_stmt(self, tokens):
+        nl = "\n"
+        return f"{self.keys['async']} {tokens[0].lstrip(nl)}"
+
 
 def репорт(code, error, имя_файла="модуль"):
     номер_строки = error.line
