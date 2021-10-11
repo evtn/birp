@@ -6,9 +6,7 @@ from lark import (
     UnexpectedEOF as НепредвиденныйКФ,
 )
 from lark.indenter import Indenter as Отступник
-from argparser import аргпарсер
 from json import load as загрузить
-from time import time
 from traceback import format_exc
 
 
@@ -608,7 +606,7 @@ def transform(code, parser, преобразователь, имя_файла="�
 
     try:
         result = преобразователь.transform(tree)
-    except Exception as error:
+    except Exception:
         print(format_exc())
         return None, tree
 
