@@ -74,16 +74,16 @@ import_name: "подключить" dotted_as_names
 IMPORT_STAR: "*"
 import_from: "из" (dots? dotted_name | dots) "подключить" (IMPORT_STAR | "(" import_as_names ")" | import_as_names)
 !dots: "."+
-import_as_name: NAME ["как" NAME]
-dotted_as_name: dotted_name ["как" NAME]
+import_as_name: name ["как" name]
+dotted_as_name: dotted_name ["как" name]
 import_as_names: import_as_name ("," import_as_name)* [","]
 dotted_as_names: dotted_as_name ("," dotted_as_name)*
-dotted_name: NAME ("." NAME)*
-global_stmt: "глобально" NAME ("," NAME)*
-nonlocal_stmt: "нелокально" NAME ("," NAME)*
+dotted_name: name ("." name)*
+global_stmt: "глобально" name ("," name)*
+nonlocal_stmt: "нелокально" name ("," name)*
 assert_stmt: "убедиться" test ["," test]
 
-?compound_stmt: if_stmt | while_stmt | for_stmt | try_stmt | with_stmt | funcdef | classdef | decorated | async_stmt //| match_stmt
+?compound_stmt: if_stmt | while_stmt | for_stmt | try_stmt | with_stmt | funcdef | classdef | decorated | async_stmt | match_stmt
 async_stmt: "асинхронно" (funcdef | with_stmt | for_stmt)
 if_stmt: "если" test ":" suite elifs ["иначе" ":" suite]
 elifs: elif_*
@@ -94,7 +94,7 @@ try_stmt: "попробовать" ":" suite except_clauses ["иначе" ":" su
         | "попробовать" ":" suite finally_   -> try_finally
 finally_: "финально" ":" suite
 except_clauses: except_clause+ 
-except_clause: "кроме" [test ["как" NAME]] ":" suite
+except_clause: "кроме" [test ["как" name]] ":" suite
 
 with_stmt: "с" with_items ":" suite
 with_items: with_item ("," with_item)* 
@@ -139,77 +139,55 @@ star_expr: "*" expr
 ?await_expr: AWAIT? atom_expr
 AWAIT: "ожидать"
 
-// match_stmt: "соответствие" subject_expr ":" _NEWLINE _INDENT case_block+ _DEDENT 
-// subject_expr: star_named_expr "," star_named_exprs? | named_expression
-// case_block: "случай" patterns guard? ":" suite 
-// guard: "если" named_expression 
+match_stmt: "соответствие" test ":" _NEWLINE _INDENT case+ _DEDENT
 
-// patterns: open_sequence_pattern | pattern
+case: "случай" pattern ["если" test] ":" suite
 
-// pattern: as_pattern
+?pattern: sequence_item_pattern "," _sequence_pattern -> sequence_pattern
+        | as_pattern
+?as_pattern: or_pattern ("как" name)?
+?or_pattern: closed_pattern ("|" closed_pattern)*
+?closed_pattern: literal_pattern
+               | name -> capture_pattern
+               | "_" -> any_pattern
+               | attr_pattern
+               | "(" as_pattern ")"
+               | "[" _sequence_pattern "]" -> sequence_pattern
+               | "(" (sequence_item_pattern "," _sequence_pattern)? ")" -> sequence_pattern
+               | "{" (mapping_item_pattern ("," mapping_item_pattern)* ","?)?"}" -> mapping_pattern
+               | "{" (mapping_item_pattern ("," mapping_item_pattern)* ",")? "**" NAME ","? "}" -> mapping_star_pattern
+               | class_pattern
 
-// ?as_pattern: or_pattern ("as" pattern_capture_target)?
+literal_pattern: inner_literal_pattern
 
-// ?or_pattern: closed_pattern ("|" closed_pattern)*
+?inner_literal_pattern: "Ничего" -> const_none
+                      | "Да" -> const_true
+                      | "Нет" -> const_false
+                      | STRING -> string
+                      | number
 
-// closed_pattern: literal_expr
-//               | capture_pattern
-//               | wildcard_pattern
-//               | value_pattern
-//               | group_pattern
-//               | sequence_pattern
-//               | mapping_pattern
-//               | class_pattern
+attr_pattern: name ("." name)+ -> value
 
+name_or_attr_pattern: name ("." name)* -> value
 
-// ?literal_expr: number
-//              | string_concat 
-//              | "Ничего" -> const_none
-//              | "Да"     -> const_true
-//              | "Нет"    -> const_false
+mapping_item_pattern: (literal_pattern | attr_pattern) ":" as_pattern
 
+_sequence_pattern: (sequence_item_pattern ("," sequence_item_pattern)* ","?)?
+?sequence_item_pattern: as_pattern
+                      | "*" name -> star_pattern
 
+class_pattern: name_or_attr_pattern "(" [arguments_pattern ","?] ")"
+arguments_pattern: pos_arg_pattern ["," keyws_arg_pattern]
+                 | keyws_arg_pattern -> no_pos_arguments
 
-// capture_pattern: pattern_capture_target
-
-// ?pattern_capture_target: NAME 
-
-// wildcard_pattern: "_" 
-
-// value_pattern: attr 
-// attr: NAME ("." NAME)+
-
-// group_pattern: "(" pattern ")" 
-
-// sequence_pattern: "[" [maybe_sequence_pattern] "]" 
-//                 | "(" [open_sequence_pattern] ")" 
-
-// open_sequence_pattern: maybe_star_pattern "," maybe_sequence_pattern? 
-// maybe_sequence_pattern: maybe_star_pattern ("," maybe_star_pattern)* ","?
-// maybe_star_pattern: star_pattern | pattern
-// star_pattern: "*" pattern_capture_target 
-//             | "*" wildcard_pattern 
-
-// mapping_pattern: "{" "}" 
-//                | "{" double_star_pattern ","? "}" 
-//                | "{" items_pattern "," double_star_pattern ","? "}" 
-//                | "{" items_pattern ","? "}" 
-// ?items_pattern: key_value_pattern ("," key_value_pattern)*
-// key_value_pattern: (literal_expr | attr) ":" pattern 
-// double_star_pattern: "**" pattern_capture_target 
-
-// class_pattern: attr "(" ")" 
-//              | attr "(" positional_patterns ","? ")" 
-//              | attr "(" keyword_patterns ","? ")" 
-//              | attr "(" positional_patterns "," keyword_patterns ","? ")" 
-// positional_patterns: pattern ("," pattern)* 
-// keyword_patterns: keyword_pattern ("," keyword_pattern)*
-// keyword_pattern: NAME "=" pattern 
+pos_arg_pattern: as_pattern ("," as_pattern)*
+keyws_arg_pattern: keyw_arg_pattern ("," keyw_arg_pattern)*
+keyw_arg_pattern: name "=" as_pattern
 
 
 ?atom_expr: atom_expr "(" [arguments] ")"      -> funccall
           | atom_expr "[" subscriptlist "]"  -> getitem
-          | atom_expr "." NAME               -> getattr
+          | atom_expr "." name               -> getattr
           | atom
 
 ?atom: "(" yield_expr ")" -> parens
@@ -221,7 +199,7 @@ AWAIT: "ожидать"
      | "{" comprehension{key_value} "}" -> dict_comprehension
      | "{" _set_exprlist "}" -> set
      | "{" comprehension{test} "}" -> set_comprehension
-     | NAME -> var
+     | name -> var
      | number 
      | string_concat
      | "(" test ")" -> parens
@@ -254,7 +232,7 @@ key_value: test ":" test
 
 _set_exprlist: test_or_star_expr (","  test_or_star_expr)* [","]
 
-classdef: "класс" NAME ["(" [arguments] ")"] ":" suite
+classdef: "класс" name ["(" [arguments] ")"] ":" suite
 
 arguments: argvalue ("," argvalue)*  ("," [ starargs | kwargs])?
          | starargs
@@ -274,7 +252,7 @@ ASYNC: "асинхронно"
 ?comp_if: "если" test_nocond
 
 // not used in grammar, but may appear in "node" passed from Parser to Compiler
-encoding_decl: NAME
+encoding_decl: name
 
 yield_expr: "выдать" [testlist]
           | "выдать" "из" test -> yield_from
@@ -299,11 +277,12 @@ _NEWLINE: ( /\r?\n[\t ]*/ | COMMENT )+
 
 // Python terminals
 
-NAME: /[a-zA-Zа-яА-ЯЁё_]\w*/
+!name: NAME | "соответствие" | "случай"
+NAME: /[^\W\d]\w*/
 COMMENT: /#[^\n]*/
 
-STRING : /[ubfюбф]?r?("(?!"").*?(?<!\\)(\\\\)*?"|'(?!'').*?(?<!\\)(\\\\)*?')/i
-LONG_STRING: /[ubfюбф]?r?(""".*?(?<!\\)(\\\\)*?"""|'''.*?(?<!\\)(\\\\)*?''')/is
+STRING : /[ubfюбф]?[рr]?("(?!"").*?(?<!\\)(\\\\)*?"|'(?!'').*?(?<!\\)(\\\\)*?')/i
+LONG_STRING: /[ubfюбф]?[рr]?(""".*?(?<!\\)(\\\\)*?"""|'''.*?(?<!\\)(\\\\)*?''')/is
 
 DEC_NUMBER: /0|[1-9][\d_]*/i
 HEX_NUMBER.2: /0x[\da-f]*/i

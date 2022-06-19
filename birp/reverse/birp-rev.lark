@@ -20,7 +20,7 @@ decorators: decorator+
 decorated: decorators (classdef | funcdef | async_funcdef)
 
 async_funcdef: "async" funcdef
-funcdef: "def" NAME "(" [parameters] ")" ["->" test] ":" suite
+funcdef: "def" name "(" [parameters] ")" ["->" test] ":" suite
 
 parameters: paramvalue ("," paramvalue)* ["," SLASH] ["," [starparams | kwparams]]
           | starparams
@@ -31,7 +31,7 @@ starparams: "*" typedparam? ("," paramvalue)* ["," kwparams]
 kwparams: "**" typedparam ","?
 
 ?paramvalue: typedparam ("=" test)?
-?typedparam: NAME (":" test)?
+?typedparam: name (":" test)?
 
 
 lambdef: "lambda" [lambda_params] ":" test
@@ -39,9 +39,9 @@ lambdef_nocond: "lambda" [lambda_params] ":" test_nocond
 lambda_params: lambda_paramvalue ("," lambda_paramvalue)* ["," [lambda_starparams | lambda_kwparams]]
           | lambda_starparams
           | lambda_kwparams
-?lambda_paramvalue: NAME ("=" test)?
-lambda_starparams: "*" [NAME]  ("," lambda_paramvalue)* ["," [lambda_kwparams]]
-lambda_kwparams: "**" NAME ","?
+?lambda_paramvalue: name ("=" test)?
+lambda_starparams: "*" [name]  ("," lambda_paramvalue)* ["," [lambda_kwparams]]
+lambda_kwparams: "**" name ","?
 
 
 ?stmt: simple_stmt | compound_stmt
@@ -49,7 +49,7 @@ lambda_kwparams: "**" NAME ","?
 ?small_stmt: (expr_stmt | assign_stmt | del_stmt | pass_stmt | flow_stmt | import_stmt | global_stmt | nonlocal_stmt | assert_stmt)
 ?expr_stmt: testlist_star_expr 
 ?assign_stmt: annassign | augassign | assign | "(" assigment_expression ")" -> assigment_expression_top_level
-assigment_expression: NAME ":=" test
+assigment_expression: name ":=" test
 
 annassign: testlist_star_expr ":" test ["=" test]
 assign: testlist_star_expr ("=" (yield_expr|testlist_star_expr))+
@@ -74,16 +74,16 @@ import_name: "import" dotted_as_names
 IMPORT_STAR: "*"
 import_from: "from" (dots? dotted_name | dots) "import" (IMPORT_STAR | "(" import_as_names ")" | import_as_names)
 !dots: "."+
-import_as_name: NAME ["as" NAME]
-dotted_as_name: dotted_name ["as" NAME]
+import_as_name: name ["as" name]
+dotted_as_name: dotted_name ["as" name]
 import_as_names: import_as_name ("," import_as_name)* [","]
 dotted_as_names: dotted_as_name ("," dotted_as_name)*
-dotted_name: NAME ("." NAME)*
-global_stmt: "global" NAME ("," NAME)*
-nonlocal_stmt: "nonlocal" NAME ("," NAME)*
+dotted_name: name ("." name)*
+global_stmt: "global" name ("," name)*
+nonlocal_stmt: "nonlocal" name ("," name)*
 assert_stmt: "assert" test ["," test]
 
-?compound_stmt: if_stmt | while_stmt | for_stmt | try_stmt | with_stmt | funcdef | classdef | decorated | async_stmt //| match_stmt
+?compound_stmt: if_stmt | while_stmt | for_stmt | try_stmt | with_stmt | funcdef | classdef | decorated | async_stmt | match_stmt
 async_stmt: "async" (funcdef | with_stmt | for_stmt)
 if_stmt: "if" test ":" suite elifs ["else" ":" suite]
 elifs: elif_*
@@ -94,7 +94,7 @@ try_stmt: "try" ":" suite except_clauses ["else" ":" suite] [finally_]
         | "try" ":" suite finally_   -> try_finally
 finally_: "finally" ":" suite
 except_clauses: except_clause+ 
-except_clause: "except" [test ["as" NAME]] ":" suite
+except_clause: "except" [test ["as" name]] ":" suite
 
 with_stmt: "with" with_items ":" suite
 with_items: with_item ("," with_item)* 
@@ -139,76 +139,54 @@ star_expr: "*" expr
 ?await_expr: AWAIT? atom_expr
 AWAIT: "await"
 
-// MATCH: "match"
-// match_head: MATCH subject_expr ":"
-// match_stmt: match_head _NEWLINE _INDENT case_block+ _DEDENT 
-// subject_expr: star_named_expr "," star_named_exprs? | named_expression
-// case_block: "case" patterns guard? ":" suite 
-// guard: "if" named_expression 
+match_stmt: "match" test ":" _NEWLINE _INDENT case+ _DEDENT
 
-// patterns: open_sequence_pattern | pattern
+case: "case" pattern ["if" test] ":" suite
 
-// pattern: as_pattern
+?pattern: sequence_item_pattern "," _sequence_pattern -> sequence_pattern
+        | as_pattern
+?as_pattern: or_pattern ("as" name)?
+?or_pattern: closed_pattern ("|" closed_pattern)*
+?closed_pattern: literal_pattern
+               | name -> capture_pattern
+               | "_" -> any_pattern
+               | attr_pattern
+               | "(" as_pattern ")"
+               | "[" _sequence_pattern "]" -> sequence_pattern
+               | "(" (sequence_item_pattern "," _sequence_pattern)? ")" -> sequence_pattern
+               | "{" (mapping_item_pattern ("," mapping_item_pattern)* ","?)?"}" -> mapping_pattern
+               | "{" (mapping_item_pattern ("," mapping_item_pattern)* ",")? "**" name ","? "}" -> mapping_star_pattern
+               | class_pattern
 
-// ?as_pattern: or_pattern ("as" pattern_capture_target)?
+literal_pattern: inner_literal_pattern
 
-// ?or_pattern: closed_pattern ("|" closed_pattern)*
+?inner_literal_pattern: "None" -> const_none
+                      | "True" -> const_true
+                      | "False" -> const_false
+                      | STRING -> string
+                      | number
 
-// closed_pattern: literal_expr
-//               | capture_pattern
-//               | wildcard_pattern
-//               | value_pattern
-//               | group_pattern
-//               | sequence_pattern
-//               | mapping_pattern
-//               | class_pattern
+attr_pattern: name ("." name)+ -> value
 
+name_or_attr_pattern: name ("." name)* -> value
 
-// ?literal_expr: number
-//              | string_concat 
-//              | "None"  -> const_none
-//              | "True"  -> const_true
-//              | "False" -> const_false
+mapping_item_pattern: (literal_pattern|attr_pattern) ":" as_pattern
 
-// capture_pattern: pattern_capture_target
+_sequence_pattern: (sequence_item_pattern ("," sequence_item_pattern)* ","?)?
+?sequence_item_pattern: as_pattern
+                      | "*" name -> star_pattern
 
-// ?pattern_capture_target: NAME 
+class_pattern: name_or_attr_pattern "(" [arguments_pattern ","?] ")"
+arguments_pattern: pos_arg_pattern ["," keyws_arg_pattern]
+                 | keyws_arg_pattern -> no_pos_arguments
 
-// wildcard_pattern: "_" 
-
-// value_pattern: attr 
-// attr: NAME ("." NAME)+
-
-// group_pattern: "(" pattern ")" 
-
-// sequence_pattern: "[" [maybe_sequence_pattern] "]" 
-//                 | "(" [open_sequence_pattern] ")" 
-
-// open_sequence_pattern: maybe_star_pattern "," maybe_sequence_pattern? 
-// maybe_sequence_pattern: maybe_star_pattern ("," maybe_star_pattern)* ","?
-// maybe_star_pattern: star_pattern | pattern
-// star_pattern: "*" pattern_capture_target 
-//             | "*" wildcard_pattern 
-
-// mapping_pattern: "{" "}" 
-//                | "{" double_star_pattern ","? "}" 
-//                | "{" items_pattern "," double_star_pattern ","? "}" 
-//                | "{" items_pattern ","? "}" 
-// ?items_pattern: key_value_pattern ("," key_value_pattern)*
-// key_value_pattern: (literal_expr | attr) ":" pattern 
-// double_star_pattern: "**" pattern_capture_target 
-
-// class_pattern: (NAME | attr) "(" ")" 
-//              | (NAME | attr) "(" positional_patterns ","? ")" 
-//              | (NAME | attr) "(" keyword_patterns ","? ")" 
-//              | (NAME | attr) "(" positional_patterns "," keyword_patterns ","? ")" 
-// positional_patterns: pattern ("," pattern)* 
-// keyword_patterns: keyword_pattern ("," keyword_pattern)*
-// keyword_pattern: NAME "=" pattern 
+pos_arg_pattern: as_pattern ("," as_pattern)*
+keyws_arg_pattern: keyw_arg_pattern ("," keyw_arg_pattern)*
+keyw_arg_pattern: name "=" as_pattern
 
 ?atom_expr: atom_expr "(" [arguments] ")"    -> funccall
           | atom_expr "[" subscriptlist "]"  -> getitem
-          | atom_expr "." NAME               -> getattr
+          | atom_expr "." name               -> getattr
           | atom
 
 ?atom: "(" yield_expr ")" -> parens
@@ -220,7 +198,7 @@ AWAIT: "await"
      | "{" comprehension{key_value} "}" -> dict_comprehension
      | "{" _set_exprlist "}" -> set
      | "{" comprehension{test} "}" -> set_comprehension
-     | NAME -> var
+     | name -> var
      | number 
      | string_concat
      | "(" test ")" -> parens
@@ -253,7 +231,7 @@ key_value: test ":" test
 
 _set_exprlist: test_or_star_expr (","  test_or_star_expr)* [","]
 
-classdef: "class" NAME ["(" [arguments] ")"] ":" suite
+classdef: "class" name ["(" [arguments] ")"] ":" suite
 
 arguments: argvalue ("," argvalue)*  ("," [ starargs | kwargs])?
          | starargs
@@ -274,7 +252,7 @@ ASYNC: "async"
 ?comp_if: "if" test_nocond
 
 // not used in grammar, but may appear in "node" passed from Parser to Compiler
-encoding_decl: NAME
+encoding_decl: name
 
 yield_expr: "yield" [testlist]
           | "yield" "from" test -> yield_from
@@ -299,7 +277,8 @@ _NEWLINE: ( /\r?\n[\t ]*/ | COMMENT )+
 
 // Python terminals
 
-NAME: /[a-zA-Zа-яА-ЯЁё_]\w*/
+!name: NAME | "match" | "case"
+NAME: /[^\W\d]\w*/
 COMMENT: /#[^\n]*/
 
 STRING : /[ubfюбф]?r?("(?!"").*?(?<!\\)(\\\\)*?"|'(?!'').*?(?<!\\)(\\\\)*?')/i

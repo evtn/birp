@@ -93,6 +93,8 @@ class БазовыйГенератор(Преобразователь):
         "not": "not",
         "is": "is",
         "del": "del",
+        "match": "match",
+        "case": "case",
         "global": "global",
         "nonlocal": "nonlocal",
         "with": "with",
@@ -242,8 +244,8 @@ class БазовыйГенератор(Преобразователь):
     def getattr(self, tokens):
         return ".".join(tokens)
 
-    def NAME(self, token):
-        return self.переводы.get(token, token)
+    def name(self, tokens):
+        return self.переводы.get(tokens[0], tokens[0])
 
     def annassign(self, tokens):
         if tokens[2]:
@@ -575,6 +577,67 @@ class БазовыйГенератор(Преобразователь):
     def async_stmt(self, tokens):
         nl = "\n"
         return f"{self.keys['async']} {tokens[0].lstrip(nl)}"
+
+    def match_stmt(self, tokens):
+        ветки = добавить_отступ("\n" + "\n".join(tokens[1:]))
+        return f"{self.keys['match']} {tokens[0]}:{ветки}"
+
+    def case(self, tokens):
+        (
+            шаблон,
+            условие,
+            блок,
+        ) = tokens
+        if условие:
+            условие = f" {self.keys['if']} {условие}"
+        else:
+            условие = ""
+        блок = добавить_отступ(f"\n{блок}")
+        return f"{self.keys['case']} {шаблон}{условие}:{блок}"
+
+    def sequence_pattern(self, tokens):
+        return f"({', '.join(tokens)})"
+
+    def as_pattern(self, tokens):
+        return f"{tokens[0]} {self.keys['as']} {tokens[1]}"
+
+    def or_pattern(self, tokens):
+        return " | ".join(tokens)
+
+    def literal_pattern(self, tokens):
+        return tokens[0]
+
+    def mapping_pattern(self, tokens):
+        return f"{{{', '.join(tokens)}}}"
+
+    def mapping_pattern_item(self, tokens):
+        return ":".join(tokens)
+
+    def star_pattern(self, tokens):
+        return f"*{tokens}"
+
+    def mapping_star_pattern(self, tokens):
+        if len(tokens) == 1:
+            tokens.insert(0, "")
+        return f"{{{' ** '.join(tokens)}}}"
+
+    def attr_pattern(self, tokens):
+        return ".".join(tokens)
+
+    def pos_arg_pattern(self, tokens):
+        return ", ".join(tokens)
+
+    def keyws_arg_pattern(self, tokens):
+        return ", ".join(tokens)
+
+    def keyw_arg_pattern(self, tokens):
+        return " = ".join(tokens)
+
+    def arguments_pattern(self, tokens):
+        return ", ".join(tokens)
+
+    def no_pos_arguments(self, tokens):
+        return tokens[0]
 
 
 def репорт(code, error, имя_файла="модуль"):
